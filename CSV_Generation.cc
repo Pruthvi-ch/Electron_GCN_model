@@ -51,15 +51,17 @@ float ADC_effective(int ADC, bool mode, int thick){
 
 int CSV_Generation(){
   std::cout<< "start" << std::endl;
-  TFile* infile = new TFile("Raw_Hits_Regular_Electron_PU_000.root", "READ");
+  //TFile* infile = new TFile("ele_new/Electorn_200.root", "READ");
+  //TFile* infile = new TFile("/nfs/home/common/DataSet/Raw_Hits/Regular/Electron/Raw_Hits_Regular_Electron_PU_000_60k.root", "READ");
+  TFile* infile = new TFile("/nfs/home/common/DataSet/Raw_Hits/Mono/Electron/Raw_Hits_Mono_Electron_PU_000_Pt_200_Eta_2pt20.root", "READ");
   // Z pisition fo all the layers
   double Z_[47] = {322.155,323.149,325.212,326.206,328.269,329.263,331.326,332.32,334.383,335.377,337.44,338.434,340.497,341.491,343.554,344.548,346.611,347.605,349.993,350.987,353.375,354.369,356.757,357.751,360.139,361.133,367.976,374.281,380.586,386.891,393.196,399.501,405.806,412.111,418.416,424.721,431.026,439.251,447.476,455.701,463.926,472.151,480.376,488.601,496.826,505.051,513.276};
   //Scaling of adc or energy
   double scale[] = {0, 1.69, 1, 0.63, 2.3};
   double scale_sim[] = {0, 1.69, 1, 0.63, 0.113};
-  int in_id = 11;
+  int in_id = 22;
   int n_layers = 47;
-  int n = 20000; // number of events to analyze
+  int n = 1000; // number of events to analyze
   //TTree **intree = new TTree*[n_layers];
   TTree *intree = new TTree;
   //Variables for adc, nHit, x, y, simhitE, .etc 
@@ -81,7 +83,8 @@ int CSV_Generation(){
   int id_[100] = {0};
   float Egen_[100] = {0.0};
 
-  
+  TH1F *Layer1_energy = new TH1F("Layer1_energy", "", 100, 0.0, 50000.0);
+  Layer1_energy->GetXaxis()->SetTitle("Energy in layer 1");  
   TTree *genTree = (TTree*)(infile->Get("Events/Gen"));
   genTree->SetBranchAddress("n_particle", &n_gen);
   genTree->SetBranchAddress("eta", &eta_);
@@ -115,8 +118,11 @@ int CSV_Generation(){
     float phi_a = 0.0;
     float pT_a = 0.0;
     float E_a = 0.0;
+    float E_HE = 0.0;
+    //std::cout<< id_[k] << std::endl;
     for(int k=0; k<n_gen; k++){
-      if((id_[k] == in_id) && (pz_[k] > 0.0)){
+      //std::cout<< id_[k] << std::endl;
+      if((pz_[k] > 0.0)){
         eta_a = eta_[k];
         phi_a = phi_[k];
         pT_a = pT_[k];
@@ -124,10 +130,11 @@ int CSV_Generation(){
       }
     }
     if(eta_a < 1.7 || eta_a > 2.7){continue;}
-    std::ofstream out_file("CSV/Event_"  + std::to_string(j) + ".csv");
-    out_file << "X,Y,Layer,Eff_ADC,E" << std::endl;
+    std::ofstream out_file("CSV_PU_000_Pt_200_Eta_2pt20/Event_fet_"  + std::to_string(j) + ".csv");
+    out_file << "X,Y,Layer,Eff_ADC" << std::endl;
     //std::cout<<" Energy " << GenEvent[0].Energy << " GeV" << std::endl;
     int n_node_total = 0;
+    float layer_1_ene = 0.0;
     for(int i=0; i<n_layers; i++){
         intree = (TTree*)(infile->Get(Form("Events/layer_%02d", i+1)));
         intree->SetBranchAddress("nHit", &nHit_);
@@ -141,17 +148,31 @@ int CSV_Generation(){
         intree->SetBranchAddress("z_side", &zside_);
       intree->GetEntry(j);
       int n_ = 0;
+      TLorentzVector p4a;
+      p4a.SetPtEtaPhiE(pT_a, eta_a, phi_a, E_a);
       for(int k=0; k<nHit_; k++){
         float ADC_eff = ADC_effective(adc_[k], adc_mode_[k], thick_[k]);
-        if(zside_[k]>0 && ADC_eff > 85.0){
-            out_file << X_[k] << "," << Y_[k] << "," << i+1 << "," << ADC_eff << "," << E_a << std::endl;
+        TLorentzVector p4;
+        p4.SetXYZT(X_[k], Y_[k], Z_[i], 0);
+        if(zside_[k]>0 && ADC_eff > 13.5 && std::abs(p4.Eta()-eta_a) < 0.25 && std::abs(p4.DeltaPhi(p4a)) < 0.25 && i < 26){
+            out_file << p4.Eta()-eta_a << "," << p4.DeltaPhi(p4a) << "," << i+1 << "," << (ADC_eff*p4.CosTheta()) << std::endl;
             n_node_total += 1;
+        }
+        if(zside_[k]>0 && ADC_eff > 13.5 && std::abs(p4.Eta()-eta_a) < 0.1 && std::abs(p4.DeltaPhi(p4a)) < 0.1 && i >= 26){E_HE += ADC_eff;}
+        if(i == 0){
+          layer_1_ene += E_[k];
         }
       }
     }
+    Layer1_energy->Fill(layer_1_ene);
     out_file.close();
+    std::ofstream out_file2("CSV_PU_000_Pt_200_Eta_2pt20/Event_all_"  + std::to_string(j) + ".csv");
+    out_file2 << eta_a << "," << phi_a << "," << E_HE << "," << E_a << std::endl;
+    out_file2.close(); 
     std::cout<<" Event " << j << " Total Nodes " << n_node_total << std::endl;
   }
+  std::unique_ptr<TFile> myFile( TFile::Open("file_60k.root", "RECREATE") );
+  myFile->WriteObject(Layer1_energy, "Layer1_energy");
   return 0;
 }
 

@@ -12,15 +12,30 @@ from torch_geometric.data import DataLoader, Dataset, Data
 import random
 import csv
 import glob
+import argparse as arg
+
+parser = arg.ArgumentParser(description='Find Accuracy')
+parser.add_argument('-s', '--start', dest='start', type=str, default='0', help="start")
+parser.add_argument('-t', '--tag', dest='tag', type=str, default='', help="tag")
+args = parser.parse_args()
 
 edge_index = []
 x = []
 data_list=[]
 energy=[]
+start = int(args.start)
+end = start + 1000
+tag = args.tag
+#fixed2 = np.loadtxt('Graph_Regular_Electron_PU_000_Nominal_60k.csv', delimiter=',')
+print('/nfs/home/common/HGCAL_HLT/Output/Detection_CSV_Output/Wt_EJ/Mono/Electron/Graph_Mono_Electron_' + tag + '_Nominal.csv')
+fixed2 = np.loadtxt('/nfs/home/common/HGCAL_HLT/Output/Detection_CSV_Output/Wt_EJ/Mono/Electron/Graph_Mono_Electron_' + tag + '_Nominal.csv', delimiter=',') 
+print(np.shape(fixed2))
 
-
-file_names = glob.glob('/home/4tb_Drive_1/HGCAL_HLT/CSV/*.csv')
-for file_name in file_names:
+file_names = glob.glob('CSV_' + tag + '/Event_fet_*.csv')
+print(len(file_names))
+if end > len(file_names): end = -1
+print(start, '    ', end)
+for file_name in file_names[start:end]:
     f = int(file_name.split('_')[-1].split('.')[0])
     df = pd.read_csv(file_name)
     print(f'graph going on is for electron {f}')
@@ -28,9 +43,21 @@ for file_name in file_names:
     if not df.empty:  # check if the DataFrame is empty
         # Split the dataset by layer number using a for loop
         layer_data = []
-        energy_event = df['E'].iloc[0]
-        energy.append(energy_event)
-        print("Energy for event", f, "is equal to:", energy_event)
+        fixed = np.loadtxt('CSV_' + tag + '/Event_all_' + str(f) + '.csv', delimiter=',')
+        print(f, "   ", file_name, "   ", fixed)
+        found = False
+        for jj in range(np.shape(fixed2)[0]):
+            if f == int(fixed2[jj,0]):
+                fixed3 = fixed2[jj, 1:]
+                found = True
+                break
+        #print(f, fixed2[jj, 0])
+        if not found: continue    
+        #print(fixed3, fixed)
+        fixed3[2] = fixed[2]
+        print(fixed3, fixed)
+        energy.append(fixed3)
+        print("Energy for event", f, "is equal to:", fixed[3])
 
         for layer_num in range(1, 47):  # since electron travels upto 30th layer
             layer_df = df.loc[df['Layer'] == layer_num]  # filter rows by layer number
@@ -119,7 +146,7 @@ for file_name in file_names:
     try:
       arr = np.array(adj_matrix)
       rows, cols = np.where(arr == 1)
-      adj_tensor = torch.tensor([rows, cols], dtype=torch.long)
+      adj_tensor = torch.tensor(np.array([rows, cols]), dtype=torch.int16)
       edge_index.append(adj_tensor)
     except (ValueError, IndexError) as e:
         print(f"Skipping file: {f}. Error: {e}")
@@ -158,11 +185,13 @@ for file_name in file_names:
     x.append(o)
 
 #inserting data into the data_list
-for k in range(0, len(file_names)):
-    data_list.append(Data(x=x[k], edge_index=edge_index[k], y=torch.tensor([energy[k]], dtype=torch.float)))
+for k in range(0, len(x)):
+    print(x[k].size())
+    print(edge_index[k].size())
+    data_list.append(Data(x=x[k], edge_index=edge_index[k], y=torch.tensor(energy[k], dtype=torch.float)))
     print("Datalist is filled for:", file_name)
 
 import pickle
 # assume `outer_list` is the list of objects you want to save
-with open('Electron_latest.pkl', 'wb') as f:
+with open('Electron_latest_' + tag + '.pkl', 'wb') as f:
     pickle.dump(data_list, f)
