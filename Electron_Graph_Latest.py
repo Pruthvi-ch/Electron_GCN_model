@@ -17,7 +17,10 @@ import argparse as arg
 parser = arg.ArgumentParser(description='Find Accuracy')
 parser.add_argument('-s', '--start', dest='start', type=str, default='0', help="start")
 parser.add_argument('-t', '--tag', dest='tag', type=str, default='', help="tag")
+parser.add_argument('-m', '--mode', dest='mode', type=str, default='Standard', help="mode ['Standard', 'Distance', 'InvDistance', 'EffADC', 'AvgEffADC']")
 args = parser.parse_args()
+
+
 
 edge_index = []
 x = []
@@ -26,8 +29,14 @@ energy=[]
 start = int(args.start)
 end = start + 1000
 tag = args.tag
+mode  = args.mode
+
+if mode not in ['Standard', 'Distance', 'InvDistance', 'EffADC', 'AvgEffADC']:
+    print("Please select correct mode")
+    exit()
+
 #fixed2 = np.loadtxt('Graph_Regular_Electron_PU_000_Nominal_60k.csv', delimiter=',')
-print('/nfs/home/common/HGCAL_HLT/Output/Detection_CSV_Output/Wt_EJ/Mono/Electron/Graph_Mono_Electron_' + tag + '_Nominal.csv')
+#print('/nfs/home/common/HGCAL_HLT/Output/Detection_CSV_Output/Wt_EJ/Mono/Electron/Graph_Mono_Electron_' + tag + '_Nominal.csv')
 fixed2 = np.loadtxt('/nfs/home/common/HGCAL_HLT/Output/Detection_CSV_Output/Wt_EJ/Mono/Electron/Graph_Mono_Electron_' + tag + '_Nominal.csv', delimiter=',') 
 print(np.shape(fixed2))
 
@@ -132,9 +141,27 @@ for file_name in file_names[start:end]:
     adj_matrix = [[0] * n for _ in range(n)]
     for edge in graph.edges():
       i, j = index_map[edge[0]], index_map[edge[1]]
-      adj_matrix[i][j] = 1
-      adj_matrix[j][i] = 1
-
+      distance = ((grapg.nodes[edge[0]]['x'] - graph.nodes[edge[1]]['x'])**2 + (grapg.nodes[edge[0]]['y'] - graph.nodes[edge[1]]['y'])**2)**0.5
+      if distance == 0: invDistance = 0
+      else: invDistance = 1/distance
+      eff_adc_i = df.loc[edge[0],'Eff_ADC']
+      eff_adc_j = df.loc[edge[1],'Eff_ADC']
+      avg_eff_adc = (eff_adc_i + eff_adc_j)/2
+      if mode == 'Standard':
+          adj_matrix[i][j] = 1
+          adj_matrix[j][i] = 1
+      elif mode == 'Distance':
+          adj_matrix[i][j] = distance
+          adj_matrix[j][i] = distance
+      elif mode == 'InvDiatnace':
+          adj_matrix[i][j] = invDistance
+          adj_matrix[j][i] = invDistance
+      elif mode == 'EffADC':
+          adj_matrix[i][j] = eff_adc_i
+          adj_matrix[j][i] = eff_adc_j
+      elif mode == 'AvgEffADC':
+          adj_matrix[i][j] = avg_eff_adc
+          adj_matrix[j][i] = avg_eff_adc
 
     # Print the adjacency matrix
     #for row in adj_matrix:
@@ -144,10 +171,10 @@ for file_name in file_names[start:end]:
     #print("----------------------------Edge Index---------------------------------")
 
     try:
-      arr = np.array(adj_matrix)
-      rows, cols = np.where(arr == 1)
-      adj_tensor = torch.tensor(np.array([rows, cols]), dtype=torch.int16)
-      edge_index.append(adj_tensor)
+        arr = np.array(adj_matrix)
+        rows, cols = np.where(arr == 1)
+        adj_tensor = torch.tensor(np.array([rows, cols]), dtype=torch.int16)
+        edge_index.append(adj_tensor)
     except (ValueError, IndexError) as e:
         print(f"Skipping file: {f}. Error: {e}")
         continue
